@@ -47,3 +47,15 @@ function Restore-SpoolerService {
     }
 
 }
+
+
+function Remove-UnusedPrinterPorts {
+    $usedPrinterPorts = @()
+    $allPrinterPorts = Get-PrinterPort
+
+    # Gets all printers then adds whatever ports they are currently using to $usedPrinterPorts array.
+    Get-Printer | ForEach-Object -Process {$usedPrinterPorts += $_.PortName}
+
+    # Compares all printer ports to used printer ports, each object that is not a part of the $usedPrinterPorts list is removed. Non printer port objects will produce an error.
+    Compare-Object -ReferenceObject $allPrinterPorts -DifferenceObject $usedPrinterPorts | ForEach-Object -Process { If($_.SideIndicator -eq '<=' ){Remove-PrinterPort $_.InputObject}}
+}
