@@ -1,49 +1,53 @@
-# Self-elevate the script if required
-if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    if ([int](Get-CimInstance -Class Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber) -ge 6000) {
-     $CommandLine = "-File `"" + $MyInvocation.MyCommand.Path + "`" " + $MyInvocation.UnboundArguments
-     Start-Process -FilePath PowerShell.exe -Verb Runas -ArgumentList $CommandLine
-     Exit
-    }
-}
-
-# Stops the spooler service and stops the program that the printer queue is dependent upon. Then it deletes the files in the print queue in the system. Then it restarts everything.
-# Does a check to see if all of the files are missing from the print queue folder to decide if the script has run properly or not and then informs the user either way.
-
-Stop-Service Spooler -Force
-Get-Process printfilterpipelinesvc | ForEach-Object -Process {
-    Stop-Process $_.Id -Force
-}
-Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS" | ForEach-Object -Process {
-    Remove-Item -Path $_.PSPath -Force
-}
-Start-Process -FilePath "C:\Windows\System32\printfilterpipelinesvc.exe"
-Start-Service Spooler
-
-If (((Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS").count) -eq 0 -and ((Get-Service spooler).status -eq "Running")) {
-    Read-Host -Prompt "Success: All printer services have been reset. Press Enter to close."
-} else {
-    Read-Host -Prompt "Failure: Objects remain in print queue or the service is not running. You can try running this script again or restarting the computer and printer. Press Enter to close."
-}
-
-
-
-
 function Restore-SpoolerService {
     [CmdletBinding()]
-    param ()
+    Param (
+        [Parameter]
+        [Switch]$DeleteCache
+    )
 
     Begin {
     }
 
     Process {
+        Stop-Service -Name Spooler -Force
+
+        if ((Get-Service -Name Spooler).Status -ne "Stopped") {
+            throw "Failed to stop the Spooler service. Verify you are running this command as an administrator."
+        }
+
+        Write-Verbose "Stopped the spooler service."
+
+        # This deletes everything in the print spooler cache if the DeleteCache switch is true. 
+        if ($DeleteCache) {
+            Write-Verbose "Removing items from spooler cache."
+            Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS" | ForEach-Object -Process {
+                Remove-Item -Path $_.PSPath -Force
+                Write-Verbose -Message "Removed $($_.PSPath)"
+            }
+        }
+
+        # Tries to start the spooler service. It will try 3 times before continuing. 
+        do {
+            [int] $startServiceTryCount = 0
+            Write-Verbose "Starting the spooler service."
+            try {
+                Start-Service -Name Spooler
+            }
+            catch {
+                Write-Verbose "Failed to start the Spooler service. Waiting 10 seconds to try again."
+                Start-Sleep -Seconds 10
+            }
+            $startServiceTryCount + 1
+        } while (((Get-Service -Name Spooler).Status -eq "Stopped") -and ($startServiceTryCount -ne 3))
     }
 
     End {
-        Do {
-
-
-        } While ($success)
+        # Need to update this so the message is more clear on exactly what has occurred.
+        If (((Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS").count) -eq 0 -and ((Get-Service spooler).status -eq "Running")) {
+            Write-Verbose "Success: All printer services have been reset. Press Enter to close."
+        } else {
+            Write-Verbose "Failure: Objects remain in print queue or the service is not running. You can try running this script again or restarting the computer and printer. Press Enter to close."
+        }
     }
 
 }
