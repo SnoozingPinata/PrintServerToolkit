@@ -2,22 +2,26 @@ function Restore-SpoolerService {
     [CmdletBinding()]
     Param (
         [Parameter]
-        [Switch]$DeleteCache
+        [Switch]$DeleteCache,
+
+        [Parameter]
+        [Switch]$ReturnResult
     )
 
     Begin {
     }
 
     Process {
+        # Stopping the service.
         Stop-Service -Name Spooler -Force
 
+        # Checking to see if service has stopped, throws errors if not.
         if ((Get-Service -Name Spooler).Status -ne "Stopped") {
             throw "Failed to stop the Spooler service. Verify you are running this command as an administrator."
         }
-
         Write-Verbose "Stopped the spooler service."
 
-        # This deletes everything in the print spooler cache if the DeleteCache switch is true. 
+        # If the DeleteCache switch was used, this deletes everything in the print spooler cache. 
         if ($DeleteCache) {
             Write-Verbose "Removing items from spooler cache."
             Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS" | ForEach-Object -Process {
@@ -26,9 +30,9 @@ function Restore-SpoolerService {
             }
         }
 
-        # Tries to start the spooler service. It will try 3 times before continuing. 
+        # Tries to start spooler service 3 times before continuing.
+        [int] $startServiceTryCount = 0
         do {
-            [int] $startServiceTryCount = 0
             Write-Verbose "Starting the spooler service."
             try {
                 Start-Service -Name Spooler
@@ -39,17 +43,34 @@ function Restore-SpoolerService {
             }
             $startServiceTryCount + 1
         } while (((Get-Service -Name Spooler).Status -eq "Stopped") -and ($startServiceTryCount -ne 3))
-    }
 
-    End {
-        # Need to update this so the message is more clear on exactly what has occurred.
-        If (((Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS").count) -eq 0 -and ((Get-Service spooler).status -eq "Running")) {
-            Write-Verbose "Success: All printer services have been reset. Press Enter to close."
-        } else {
-            Write-Verbose "Failure: Objects remain in print queue or the service is not running. You can try running this script again or restarting the computer and printer. Press Enter to close."
+        # Returns true or false if the ReturnResult switch was used.
+        # Two sets of validation code to handle whether DeleteCache switch was used or not.
+        if ($ReturnResult -and $DeleteCache){
+            $finalCacheCount = (Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS").count
+            $finalServiceStatus = (Get-Service -Name Spooler).status
+
+            if (($finalCacheCount) -eq 0 -and ($finalServiceStatus -eq "Running")) {
+                Return $true
+                Write-Verbose "Success: Spooler cache is empty and the spooler service is running."
+            } else {
+                Return $false
+                Write-Verbose "Failure:`nRemaining items in cache: $($finalCacheCount)`nService status: $($finalServiceStatus)"
+            }
+        } elseif ($ReturnResult){
+            $finalServiceStatus = (Get-Service -Name Spooler).status
+            if ($finalServiceStatus -eq "Running"){
+                Return $true
+                Write-Verbose "Success: Spooler service is running."
+            } else {
+                Return $false
+                Write-Verbose "Failure: Spooler service is $($finalServiceStatus)"
+            }
         }
     }
 
+    End {
+    }
 }
 
 
