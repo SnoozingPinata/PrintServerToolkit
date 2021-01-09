@@ -1,10 +1,10 @@
 function Restore-SpoolerService {
     [CmdletBinding()]
     Param (
-        [Parameter]
+        [Parameter()]
         [Switch]$DeleteCache,
 
-        [Parameter]
+        [Parameter()]
         [Switch]$ReturnResult
     )
 
@@ -41,7 +41,7 @@ function Restore-SpoolerService {
                 Write-Verbose "Failed to start the Spooler service. Waiting 10 seconds to try again."
                 Start-Sleep -Seconds 10
             }
-            $startServiceTryCount + 1
+            $startServiceTryCount + 1 | Out-Null
         } while (((Get-Service -Name Spooler).Status -eq "Stopped") -and ($startServiceTryCount -ne 3))
 
         # Returns true or false if the ReturnResult switch was used.
@@ -51,24 +51,24 @@ function Restore-SpoolerService {
             $finalServiceStatus = (Get-Service -Name Spooler).status
 
             if (($finalCacheCount) -eq 0 -and ($finalServiceStatus -eq "Running")) {
-                Return $true
                 Write-Verbose "Success: Spooler cache is empty and the spooler service is running."
+                Return $true
             } else {
-                Return $false
                 Write-Verbose "Failure:`nRemaining items in cache: $($finalCacheCount)`nService status: $($finalServiceStatus)"
+                Return $false
             }
         } elseif ($ReturnResult){
             $finalServiceStatus = (Get-Service -Name Spooler).status
             if ($finalServiceStatus -eq "Running"){
-                Return $true
                 Write-Verbose "Success: Spooler service is running."
+                Return $true
             } else {
-                Return $false
                 Write-Verbose "Failure: Spooler service is $($finalServiceStatus)"
+                Return $false
             }
         }
     }
-
+    
     End {
     }
 }
