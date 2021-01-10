@@ -1,4 +1,46 @@
 function Restore-SpoolerService {
+    <#
+        .SYNOPSIS
+        Restarts Window's print spooler service. Optionally, removes items in the spooler cache and/or performs validation.
+
+        .DESCRIPTION
+        Restarts Window's print spooler service. 
+        Optionally, deletes all files in the spooler cache in C:\Windows\System32\spool\PRINTERS. 
+        Optionally, performs validation and returns true or false.
+
+        .PARAMETER DeleteCache
+        Switch: Deletes all files within the Windows spooler cache located here: C:\Windows\System32\spool\PRINTERS.
+
+        .PARAMETER ReturnResult
+        Switch: Performs validation and returns a boolean value for success or failure. 
+
+        .INPUTS
+        None. You cannot pipe objects to Restore-SpoolerService.
+
+        .OUTPUTS
+        System.Boolean. ResturnResult switch returns a boolean value for success or failure.
+
+        .EXAMPLE
+        Restore-SpoolerService -ReturnResult -Verbose
+        VERBOSE: Stopped the spooler service.
+        VERBOSE: Starting the spooler service.
+        VERBOSE: Success: Spooler service is running.
+        True
+
+        .EXAMPLE
+        Restore-SpoolerService -ReturnResult -DeleteCache -Verbose
+        VERBOSE: Stopped the spooler service.
+        VERBOSE: Removing items from spooler cache.
+        VERBOSE: Starting the spooler service.
+        VERBOSE: Success: Spooler cache is empty and the spooler service is running.
+
+        .LINK
+        Github source: https://github.com/SnoozingPinata/PrintServerToolkit
+
+        .LINK
+        Author's website: www.samuelmelton.com
+    #>
+
     [CmdletBinding()]
     Param (
         [Parameter()]
@@ -44,21 +86,23 @@ function Restore-SpoolerService {
             $startServiceTryCount + 1 | Out-Null
         } while (((Get-Service -Name Spooler).Status -eq "Stopped") -and ($startServiceTryCount -ne 3))
 
-        # Returns true or false if the ReturnResult switch was used.
-        # Two sets of validation code to handle whether DeleteCache switch was used or not.
-        if ($ReturnResult -and $DeleteCache){
-            $finalCacheCount = (Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS").count
+        # Performs validation. Returns true or false if ReturnResult switch was used. Different set of checks if DeleteCache switch was also used. 
+        if ($ReturnResult){
             $finalServiceStatus = (Get-Service -Name Spooler).status
 
-            if (($finalCacheCount) -eq 0 -and ($finalServiceStatus -eq "Running")) {
-                Write-Verbose "Success: Spooler cache is empty and the spooler service is running."
-                Return $true
-            } else {
-                Write-Verbose "Failure:`nRemaining items in cache: $($finalCacheCount)`nService status: $($finalServiceStatus)"
-                Return $false
+            # This is the code for the return value if DeleteCache switch was used.
+            if ($DeleteCache){
+                $finalCacheCount = (Get-ChildItem -Path "C:\Windows\System32\spool\PRINTERS").count
+                if (($finalCacheCount) -eq 0 -and ($finalServiceStatus -eq "Running")) {
+                    Write-Verbose "Success: Spooler cache is empty and the spooler service is running."
+                    Return $true
+                } else {
+                    Write-Verbose "Failure:`nRemaining items in cache: $($finalCacheCount)`nService status: $($finalServiceStatus)"
+                    Return $false
+                }
             }
-        } elseif ($ReturnResult){
-            $finalServiceStatus = (Get-Service -Name Spooler).status
+
+            # This is the code for the return value if ReturnResult switched was used, but DeleteCache was not.
             if ($finalServiceStatus -eq "Running"){
                 Write-Verbose "Success: Spooler service is running."
                 Return $true
@@ -75,12 +119,68 @@ function Restore-SpoolerService {
 
 
 function Remove-UnusedPrinterPorts {
-    $usedPrinterPorts = @()
-    $allPrinterPorts = Get-PrinterPort
+    <#
+        .SYNOPSIS
+        Removes non-local printer ports that are no longer in use.
 
-    # Gets all printers then adds whatever ports they are currently using to $usedPrinterPorts array.
-    Get-Printer | ForEach-Object -Process {$usedPrinterPorts += $_.PortName}
+        .DESCRIPTION
+        Removes any printer port that is not a "local port" that is not currently being used by a configured printer.
 
-    # Compares all printer ports to used printer ports, each object that is not a part of the $usedPrinterPorts list is removed. Non printer port objects will produce an error.
-    Compare-Object -ReferenceObject $allPrinterPorts -DifferenceObject $usedPrinterPorts | ForEach-Object -Process { If($_.SideIndicator -eq '<=' ){Remove-PrinterPort $_.InputObject}}
+        .INPUTS
+        None. You cannot pipe objects to Remove-UnusedPrinterPorts.
+
+        .OUTPUTS
+        None. This command does not provide any output.
+
+        .EXAMPLE
+        Remove-UnusedPrinterPorts
+
+        .LINK
+        Github source: https://github.com/SnoozingPinata/PrintServerToolkit
+
+        .LINK
+        Author's website: www.samuelmelton.com
+    #>
+
+    [CmdletBinding()]
+    Param (
+    )
+
+    Begin {
+    }
+
+    Process {
+        # Creates empty arrays to compare.
+        $usedPrinterPorts = @()
+        $allNonLocalPrinterPorts = @()
+
+        # Gets all of the printer ports that are not local ports and adds each one to the $allNonLocalPrinterPorts array.
+        Get-PrinterPort | Where-Object {$_.Description -ne "Local Port"} | ForEach-Object -Process {
+            $allNonLocalPrinterPorts += $_.Name
+        }
+    
+        # Gets all printers then adds whatever ports they are currently using to $usedPrinterPorts array.
+        Get-Printer | ForEach-Object -Process {
+            $usedPrinterPorts += $_.PortName
+        }
+
+        # Sorts both arrays by name ascending.
+        $usedPrinterPorts = $usedPrinterPorts | Sort-Object
+        $allNonLocalPrinterPorts = $allNonLocalPrinterPorts | Sort-Object
+    
+        # Compares the arrays. If a port is on the $allNonLocalPrinterPorts list but not on the $usedPrinterPorts list, the port is removed.
+        Compare-Object -ReferenceObject $allNonLocalPrinterPorts -DifferenceObject $usedPrinterPorts | ForEach-Object -Process {
+            if($_.SideIndicator -eq '<=' ){
+                try {
+                    Remove-PrinterPort -Name $_.InputObject
+                }
+                catch{
+                    Write-Verbose "Failed to remove port $($_)"
+                }
+            }
+        }
+    }
+
+    End {
+    }
 }
