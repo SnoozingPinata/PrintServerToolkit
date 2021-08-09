@@ -3,8 +3,8 @@ A collection of powershell functions used to ease administration of a print serv
 
 Restore-SpoolerService
 * Can be used to restart the print spooler service.
-* Optionally, you can use the DeleteCache switch to delete everything in the "C:\Windows\System32\spool\PRINTERS" directory.
-* If the ReturnResult switch was used, a boolean value will be returned if the service has been restarted properly. If the DeleteCache switch was used, ReturnResult will also detect whether there are items remaining in the directory.
+* DeleteCache switch can be used to delete everything in the "C:\Windows\System32\spool\PRINTERS" directory.
+* ReturnResult switch can be used to return a boolean value if the service has been restarted properly. If the DeleteCache switch was used, ReturnResult will also detect whether there are items remaining in the directory.
 
 
 Remove-UnusedPrinterPorts
