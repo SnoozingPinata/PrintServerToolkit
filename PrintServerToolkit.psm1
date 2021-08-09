@@ -83,8 +83,8 @@ function Restore-SpoolerService {
                 Write-Verbose "Failed to start the Spooler service. Waiting 10 seconds to try again."
                 Start-Sleep -Seconds 10
             }
-            $startServiceTryCount + 1 | Out-Null
-        } while (((Get-Service -Name Spooler).Status -eq "Stopped") -and ($startServiceTryCount -ne 3))
+            $startServiceTryCount += 1
+        } while (((Get-Service -Name Spooler).Status -eq "Stopped") -and ($startServiceTryCount -lt 3))
 
         # Performs validation. Returns true or false if ReturnResult switch was used. Different set of checks if DeleteCache switch was also used. 
         if ($ReturnResult){
@@ -124,7 +124,7 @@ function Remove-UnusedPrinterPorts {
         Removes non-local printer ports that are no longer in use.
 
         .DESCRIPTION
-        Removes any printer port that is not a "local port" that is not currently being used by a configured printer.
+        Removes any printer port that is not a "local port" and that is not currently being used by a configured printer.
 
         .INPUTS
         None. You cannot pipe objects to Remove-UnusedPrinterPorts.
@@ -167,6 +167,8 @@ function Remove-UnusedPrinterPorts {
         # Sorts both arrays by name ascending.
         $usedPrinterPorts = $usedPrinterPorts | Sort-Object
         $allNonLocalPrinterPorts = $allNonLocalPrinterPorts | Sort-Object
+
+        $errorsOccurred = $false
     
         # Compares the arrays. If a port is on the $allNonLocalPrinterPorts list but not on the $usedPrinterPorts list, the port is removed.
         Compare-Object -ReferenceObject $allNonLocalPrinterPorts -DifferenceObject $usedPrinterPorts | ForEach-Object -Process {
@@ -175,9 +177,14 @@ function Remove-UnusedPrinterPorts {
                     Remove-PrinterPort -Name $_.InputObject
                 }
                 catch{
+                    $errorsOccurred = $true
                     Write-Verbose "Failed to remove port $($_)"
                 }
             }
+        }
+
+        if ($errorsOccurred) {
+            throw "Failed to remove one or more ports."
         }
     }
 
